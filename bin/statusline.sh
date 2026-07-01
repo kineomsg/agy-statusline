@@ -81,7 +81,7 @@ out=""
 
 if [ -n "$model_display" ]; then
     model_short=$(echo "$model_display" | tr -d ' ')
-    if echo "$model_id" | grep -qi "opus"; then
+    if echo "$model_id" | grep -qiE 'opus|sonnet|gemini.*pro'; then
         out="${C_RED}!!${model_short}${C_RESET}"
     else
         out="${C_PURPLE}${model_short}${C_RESET}"

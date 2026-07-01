@@ -3,14 +3,14 @@
 Status line for the **Antigravity CLI** (`agy`) — displays model name, session quota, and weekly quota with color-coded gauges.
 
 ```
-ClaudeSonnet4.6 Session:▰▱▱▱▱27%(20:40) Week:▱▱▱▱▱16%(3d6h)
+Gemini3.5Flash(High) Session:▰▱▱▱▱27%(20:40) Week:▱▱▱▱▱16%(3d6h)
 ```
 
 ## What it shows
 
 | Field | Description |
 |---|---|
-| Model name | Active model (`!!` prefix and red color for Opus) |
+| Model name | Active model (`!!` prefix and red color for Sonnet, Opus, and Gemini Pro) |
 | `Session:▰▱▱▱▱27%(20:40)` | 5-hour quota usage + reset time (HH:MM) |
 | `Week:▱▱▱▱▱16%(3d6h)` | Weekly quota usage + time until reset |
 

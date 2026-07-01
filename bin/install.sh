@@ -48,7 +48,8 @@ CURRENT_CMD=$(jq -r '.statusLine.command // ""' "$SETTINGS_FILE" 2>/dev/null)
 if [ "$CURRENT_CMD" = "$STATUS_CMD" ]; then
     ok "settings.json already configured"
 else
-    tmp=$(mktemp)
+    tmp=$(mktemp -t 'agy-statusline.XXXXXX' 2>/dev/null || mktemp)
+    trap 'rm -f "$tmp"' EXIT
     jq --arg cmd "$STATUS_CMD" \
         '.statusLine = {"type": "command", "command": $cmd, "enabled": true}' \
         "$SETTINGS_FILE" > "$tmp" && mv "$tmp" "$SETTINGS_FILE"

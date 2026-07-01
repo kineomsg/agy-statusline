@@ -18,6 +18,7 @@ color_for_pct() {
 
 build_gauge() {
     local pct=$1
+    if ! [[ "$pct" =~ ^[0-9]+$ ]]; then pct=0; fi
     local filled=$(( pct / 20 ))
     [ $filled -gt 5 ] && filled=5
     local empty=$(( 5 - filled ))
@@ -29,8 +30,10 @@ build_gauge() {
 }
 
 to_epoch() {
+    local iso="${1%%.*}"  # ミリ秒以降を除去 (e.g. .123Z)
+    iso="${iso%Z}"        # 末尾のZを除去
     date -d "$1" +%s 2>/dev/null || \
-    date -j -f "%Y-%m-%dT%H:%M:%SZ" "$1" +%s 2>/dev/null || \
+    date -j -f "%Y-%m-%dT%H:%M:%S" "$iso" +%s 2>/dev/null || \
     echo ""
 }
 
@@ -39,20 +42,32 @@ fmt_epoch_hm() {
 }
 
 fmt_reset_hm() {
-    [ -z "$1" ] || [ "$1" = "null" ] && echo "soon" && return
+    if [ -z "$1" ] || [ "$1" = "null" ]; then
+        echo "soon"; return
+    fi
     local epoch; epoch=$(to_epoch "$1")
-    [ -z "$epoch" ] && echo "soon" && return
+    if [ -z "$epoch" ]; then
+        echo "soon"; return
+    fi
     local diff=$(( epoch - now ))
-    [ $diff -le 0 ] && echo "soon" && return
+    if [ $diff -le 0 ]; then
+        echo "soon"; return
+    fi
     fmt_epoch_hm "$epoch"
 }
 
 fmt_reset_dh() {
-    [ -z "$1" ] || [ "$1" = "null" ] && echo "soon" && return
+    if [ -z "$1" ] || [ "$1" = "null" ]; then
+        echo "soon"; return
+    fi
     local epoch; epoch=$(to_epoch "$1")
-    [ -z "$epoch" ] && echo "soon" && return
+    if [ -z "$epoch" ]; then
+        echo "soon"; return
+    fi
     local diff=$(( epoch - now ))
-    [ $diff -le 0 ] && echo "soon" && return
+    if [ $diff -le 0 ]; then
+        echo "soon"; return
+    fi
     local d=$(( diff / 86400 ))
     local h=$(( (diff % 86400) / 3600 ))
     local m=$(( (diff % 3600) / 60 ))

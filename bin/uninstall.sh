@@ -31,8 +31,9 @@ else
 fi
 
 if [ -f "$SETTINGS_FILE" ]; then
-    tmp=$(mktemp -t 'agy-statusline.XXXXXX' 2>/dev/null || mktemp)
+    tmp=""
     trap 'rm -f "$tmp"' EXIT
+    tmp=$(mktemp -t 'agy-statusline.XXXXXX' 2>/dev/null || mktemp)
     jq 'del(.statusLine)' "$SETTINGS_FILE" > "$tmp" && mv "$tmp" "$SETTINGS_FILE"
     ok "Removed statusLine from ${C_DIM}settings.json${C_RESET}"
 fi

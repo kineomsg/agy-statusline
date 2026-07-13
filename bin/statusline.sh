@@ -9,6 +9,10 @@ C_AMBER=$'\e[38;2;229;192;123m'
 C_RED=$'\e[38;2;224;108;117m'
 C_DIM=$'\e[38;2;92;99;112m'
 
+strip_ansi() {
+    printf "%s" "$1" | sed -E $'s/\e\\[[0-9;]*m//g'
+}
+
 color_for_pct() {
     local pct=$1
     if [ "$pct" -ge 80 ]; then printf "%s" "$C_RED"
@@ -97,14 +101,14 @@ eval "$(echo "$input" | jq -r --arg q5h "$q5h_key" --arg qwk "$qwk_key" '
     "d7_reset=" + (.quota[$qwk].reset_time // "" | @sh)
 ' 2>/dev/null)"
 
-out=""
+items=()
 
 if [ -n "$model_display" ]; then
     model_short=$(echo "$model_display" | tr -d ' ')
     if echo "$model_id" | grep -qiE 'opus|sonnet|gemini.*pro'; then
-        out="${C_RED}!!${model_short}${C_RESET}"
+        items+=("${C_RED}!!${model_short}${C_RESET}")
     else
-        out="${C_PURPLE}${model_short}${C_RESET}"
+        items+=("${C_PURPLE}${model_short}${C_RESET}")
     fi
 fi
 
@@ -112,16 +116,46 @@ if [ -n "$h5_pct" ]; then
     rst=$(fmt_reset_hm "$h5_reset")
     c=$(color_for_pct "$h5_pct")
     gauge=$(build_gauge "$h5_pct")
-    [ -n "$out" ] && out="$out "
-    out="${out}${C_DIM}Session:${C_RESET}${gauge}${C_RESET}${c}${h5_pct}%${C_DIM}(${rst})${C_RESET}"
+    items+=("${C_DIM}Session:${C_RESET}${gauge}${C_RESET}${c}${h5_pct}%${C_DIM}(${rst})${C_RESET}")
 fi
 
 if [ -n "$d7_pct" ]; then
     rst=$(fmt_reset_dh "$d7_reset")
     c=$(color_for_pct "$d7_pct")
     gauge=$(build_gauge "$d7_pct")
-    [ -n "$out" ] && out="$out "
-    out="${out}${C_DIM}Week:${C_RESET}${gauge}${C_RESET}${c}${d7_pct}%${C_DIM}(${rst})${C_RESET}"
+    items+=("${C_DIM}Week:${C_RESET}${gauge}${C_RESET}${c}${d7_pct}%${C_DIM}(${rst})${C_RESET}")
+fi
+
+out=""
+if [ ${#items[@]} -gt 0 ]; then
+    term_width=${COLUMNS:-$((tput cols </dev/tty) 2>/dev/null || echo 80)}
+    current=""
+    for item in "${items[@]}"; do
+        if [ -z "$current" ]; then
+            current="$item"
+        else
+            test_str="$current $item"
+            stripped=$(strip_ansi "$test_str")
+            stripped_len=${#stripped}
+            if [ "$stripped_len" -gt "$term_width" ]; then
+                if [ -n "$out" ]; then
+                    out="${out}"$'\n'"${current}"
+                else
+                    out="${current}"
+                fi
+                current="$item"
+            else
+                current="$test_str"
+            fi
+        fi
+    done
+    if [ -n "$current" ]; then
+        if [ -n "$out" ]; then
+            out="${out}"$'\n'"${current}"
+        else
+            out="${current}"
+        fi
+    fi
 fi
 
 printf "%s" "$out"

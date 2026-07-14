@@ -8,16 +8,11 @@ C_GREEN=$'\e[38;2;130;180;100m'
 C_AMBER=$'\e[38;2;229;192;123m'
 C_RED=$'\e[38;2;224;108;117m'
 C_DIM=$'\e[38;2;92;99;112m'
+SESSION_WINDOW_SEC=18000
+WEEK_WINDOW_SEC=604800
 
 strip_ansi() {
     printf "%s" "$1" | sed -E $'s/\e\\[[0-9;]*m//g'
-}
-
-color_for_pct() {
-    local pct=$1
-    if [ "$pct" -ge 80 ]; then printf "%s" "$C_RED"
-    elif [ "$pct" -ge 60 ]; then printf "%s" "$C_AMBER"
-    else printf "%s" "$C_GREEN"; fi
 }
 
 GAUGE_SEGMENTS=5
@@ -25,6 +20,7 @@ GAUGE_PCT_PER_SEGMENT=20
 
 build_gauge() {
     local pct=$1
+    local color=$2
     if ! [[ "$pct" =~ ^[0-9]+$ ]]; then pct=0; fi
     local filled=$(( pct / GAUGE_PCT_PER_SEGMENT ))
     [ $filled -gt $GAUGE_SEGMENTS ] && filled=$GAUGE_SEGMENTS
@@ -32,8 +28,7 @@ build_gauge() {
     local f="" e=""
     for ((i=0; i<filled; i++)); do f="${f}▰"; done
     for ((i=0; i<empty; i++)); do e="${e}▱"; done
-    local c; c=$(color_for_pct "$pct")
-    printf "%s%s%s%s" "$c" "$f" "$C_DIM" "$e"
+    printf "%s%s%s%s" "$color" "$f" "$C_DIM" "$e"
 }
 
 to_epoch() {
@@ -45,6 +40,58 @@ to_epoch() {
     date -d "$1" +%s 2>/dev/null || \
     date -j -f "%Y-%m-%dT%H:%M:%S" "$iso" +%s 2>/dev/null || \
     echo ""
+}
+
+pace_pct() {
+    local pct=$1
+    local reset_at=$2
+    local window_sec=$3
+    if [ -z "$reset_at" ]; then
+        echo "$pct"
+        return
+    fi
+    local diff=$(( reset_at - now ))
+    if [ "$diff" -le 0 ]; then
+        echo "$pct"
+        return
+    fi
+    local elapsed=$(( window_sec - diff ))
+    if [ $(( elapsed * 20 )) -lt "$window_sec" ]; then
+        echo "$pct"
+        return
+    fi
+    local projected=$(( pct * window_sec / elapsed ))
+    if [ "$projected" -gt 999 ]; then
+        projected=999
+    fi
+    echo "$projected"
+}
+
+color_for_rate() {
+    local pct=$1
+    local reset_at=$2
+    local window_sec=$3
+
+    local raw_color
+    if [ "$pct" -ge 80 ]; then raw_color="red"
+    elif [ "$pct" -ge 60 ]; then raw_color="amber"
+    else raw_color="green"; fi
+
+    local projected
+    projected=$(pace_pct "$pct" "$reset_at" "$window_sec")
+
+    local pace_color
+    if [ "$projected" -ge 150 ]; then pace_color="red"
+    elif [ "$projected" -ge 110 ]; then pace_color="amber"
+    else pace_color="green"; fi
+
+    if [ "$raw_color" = "red" ] || [ "$pace_color" = "red" ]; then
+        printf "%s" "$C_RED"
+    elif [ "$raw_color" = "amber" ] || [ "$pace_color" = "amber" ]; then
+        printf "%s" "$C_AMBER"
+    else
+        printf "%s" "$C_GREEN"
+    fi
 }
 
 fmt_epoch_hm() {
@@ -114,15 +161,17 @@ fi
 
 if [ -n "$h5_pct" ]; then
     rst=$(fmt_reset_hm "$h5_reset")
-    c=$(color_for_pct "$h5_pct")
-    gauge=$(build_gauge "$h5_pct")
+    h5_epoch=$(to_epoch "$h5_reset")
+    c=$(color_for_rate "$h5_pct" "$h5_epoch" $SESSION_WINDOW_SEC)
+    gauge=$(build_gauge "$h5_pct" "$c")
     items+=("${C_DIM}Session:${C_RESET}${gauge}${C_RESET}${c}${h5_pct}%${C_DIM}(${rst})${C_RESET}")
 fi
 
 if [ -n "$d7_pct" ]; then
     rst=$(fmt_reset_dh "$d7_reset")
-    c=$(color_for_pct "$d7_pct")
-    gauge=$(build_gauge "$d7_pct")
+    d7_epoch=$(to_epoch "$d7_reset")
+    c=$(color_for_rate "$d7_pct" "$d7_epoch" $WEEK_WINDOW_SEC)
+    gauge=$(build_gauge "$d7_pct" "$c")
     items+=("${C_DIM}Week:${C_RESET}${gauge}${C_RESET}${c}${d7_pct}%${C_DIM}(${rst})${C_RESET}")
 fi
 

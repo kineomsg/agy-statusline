@@ -17,9 +17,11 @@ Gemini3.5Flash(High) Session:▰▱▱▱▱27%(20:40) Week:▱▱▱▱▱16%(3
 Quota pool (`claude` / `gemini`) is auto-detected from the active model — no configuration needed.
 
 **Gauge colors:**
-- Green — under 60%
-- Amber — 60–79%
-- Red — 80%+
+- The displayed percentage is always your raw usage, but the *color* also factors in pace: given how much of the 5-hour/weekly window has elapsed, will you exhaust the quota before it resets?
+- A steady, constant rate of usage always lands close to 100% by definition when the window resets — that's normal, expected utilization. So the pace signal uses its own thresholds (green below 110% projected, amber 110-150%, red 150%+) rather than the raw 60%/80% thresholds.
+- The raw usage thresholds (60%/80%) still apply independently — if your actual usage is already high late in the window, it shows red/amber regardless of pace.
+- The final color is whichever of the two signals (raw usage or pace) is more severe.
+- Pace is only considered once at least 5% of the window has elapsed, to avoid noisy projections right after a reset.
 
 ## Requirements
 

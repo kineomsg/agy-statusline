@@ -11,6 +11,11 @@ C_DIM=$'\e[38;2;92;99;112m'
 SESSION_WINDOW_SEC=18000
 WEEK_WINDOW_SEC=604800
 
+if ! command -v jq >/dev/null 2>&1; then
+    printf '%s' "${C_DIM}[statusline: jq not found]${C_RESET}"
+    exit 0
+fi
+
 strip_ansi() {
     printf "%s" "$1" | sed -E $'s/\e\\[[0-9;]*m//g'
 }
@@ -46,6 +51,7 @@ pace_pct() {
     local pct=$1
     local reset_at=$2
     local window_sec=$3
+    if ! [[ "$pct" =~ ^[0-9]+$ ]]; then pct=0; fi
     if [ -z "$reset_at" ]; then
         echo "$pct"
         return
@@ -71,6 +77,7 @@ color_for_rate() {
     local pct=$1
     local reset_at=$2
     local window_sec=$3
+    if ! [[ "$pct" =~ ^[0-9]+$ ]]; then pct=0; fi
 
     local raw_color
     if [ "$pct" -ge 80 ]; then raw_color="red"
@@ -98,17 +105,13 @@ fmt_epoch_hm() {
     date -d "@$1" "+%H:%M" 2>/dev/null || date -r "$1" "+%H:%M" 2>/dev/null || echo "soon"
 }
 
-# Resolves an ISO timestamp to a positive epoch diff from now, or prints "soon"
-# and returns 1 if the timestamp is missing/invalid/already past.
+# Resolves an already-computed epoch to a positive diff from now, or prints "soon"
+# and returns 1 if the epoch is missing/invalid/already past.
 resolve_reset_diff() {
-    if [ -z "$1" ] || [ "$1" = "null" ]; then
+    if [ -z "$1" ]; then
         echo "soon"; return 1
     fi
-    local epoch; epoch=$(to_epoch "$1")
-    if [ -z "$epoch" ]; then
-        echo "soon"; return 1
-    fi
-    local diff=$(( epoch - now ))
+    local diff=$(( $1 - now ))
     if [ $diff -le 0 ]; then
         echo "soon"; return 1
     fi
@@ -130,10 +133,15 @@ fmt_reset_dh() {
     if [ $d -gt 0 ]; then echo "${d}d${h}h"; else echo "${h}h${m}m"; fi
 }
 
-eval "$(echo "$input" | jq -r '
+jq_fields=$(echo "$input" | jq -r '
     "model_display=" + (.model.display_name // "" | @sh) + "\n" +
     "model_id="      + (.model.id // "" | @sh)
-' 2>/dev/null)"
+' 2>/dev/null)
+if [ $? -ne 0 ]; then
+    printf '%s' "${C_DIM}[statusline: bad payload]${C_RESET}"
+    exit 0
+fi
+eval "$jq_fields"
 
 if echo "$model_id" | grep -qiE 'claude|anthropic|3p'; then
     q5h_key="3p-5h"; qwk_key="3p-weekly"
@@ -141,12 +149,17 @@ else
     q5h_key="gemini-5h"; qwk_key="gemini-weekly"
 fi
 
-eval "$(echo "$input" | jq -r --arg q5h "$q5h_key" --arg qwk "$qwk_key" '
+jq_fields2=$(echo "$input" | jq -r --arg q5h "$q5h_key" --arg qwk "$qwk_key" '
     "h5_pct="   + (if .quota[$q5h].remaining_fraction != null then (((1 - .quota[$q5h].remaining_fraction) * 100) | floor | tostring) else "" end | @sh) + "\n" +
     "h5_reset=" + (.quota[$q5h].reset_time // "" | @sh) + "\n" +
     "d7_pct="   + (if .quota[$qwk].remaining_fraction != null then (((1 - .quota[$qwk].remaining_fraction) * 100) | floor | tostring) else "" end | @sh) + "\n" +
     "d7_reset=" + (.quota[$qwk].reset_time // "" | @sh)
-' 2>/dev/null)"
+' 2>/dev/null)
+if [ $? -ne 0 ]; then
+    printf '%s' "${C_DIM}[statusline: bad payload]${C_RESET}"
+    exit 0
+fi
+eval "$jq_fields2"
 
 items=()
 
@@ -160,16 +173,16 @@ if [ -n "$model_display" ]; then
 fi
 
 if [ -n "$h5_pct" ]; then
-    rst=$(fmt_reset_hm "$h5_reset")
     h5_epoch=$(to_epoch "$h5_reset")
+    rst=$(fmt_reset_hm "$h5_epoch")
     c=$(color_for_rate "$h5_pct" "$h5_epoch" $SESSION_WINDOW_SEC)
     gauge=$(build_gauge "$h5_pct" "$c")
     items+=("${C_DIM}Session:${C_RESET}${gauge}${C_RESET}${c}${h5_pct}%${C_DIM}(${rst})${C_RESET}")
 fi
 
 if [ -n "$d7_pct" ]; then
-    rst=$(fmt_reset_dh "$d7_reset")
     d7_epoch=$(to_epoch "$d7_reset")
+    rst=$(fmt_reset_dh "$d7_epoch")
     c=$(color_for_rate "$d7_pct" "$d7_epoch" $WEEK_WINDOW_SEC)
     gauge=$(build_gauge "$d7_pct" "$c")
     items+=("${C_DIM}Week:${C_RESET}${gauge}${C_RESET}${c}${d7_pct}%${C_DIM}(${rst})${C_RESET}")
@@ -177,7 +190,8 @@ fi
 
 out=""
 if [ ${#items[@]} -gt 0 ]; then
-    term_width=${COLUMNS:-$((tput cols </dev/tty) 2>/dev/null || echo 80)}
+    term_width=${COLUMNS:-$( (tput cols </dev/tty) 2>/dev/null || echo 80)}
+    if ! [[ "$term_width" =~ ^[0-9]+$ ]]; then term_width=80; fi
     current=""
     for item in "${items[@]}"; do
         if [ -z "$current" ]; then
@@ -186,7 +200,11 @@ if [ ${#items[@]} -gt 0 ]; then
             test_str="$current $item"
             stripped=$(strip_ansi "$test_str")
             stripped_len=${#stripped}
-            if [ "$stripped_len" -gt "$term_width" ]; then
+            no_gauge="${stripped//▰/}"
+            no_gauge="${no_gauge//▱/}"
+            gauge_glyphs=$(( ${#stripped} - ${#no_gauge} ))
+            effective_len=$(( stripped_len + gauge_glyphs ))
+            if [ "$effective_len" -gt "$term_width" ]; then
                 if [ -n "$out" ]; then
                     out="${out}"$'\n'"${current}"
                 else

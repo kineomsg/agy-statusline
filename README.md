@@ -63,3 +63,7 @@ Toggle on/off at any time with `/statusline` inside `agy`.
 
 - Linux (GNU date)
 - macOS (BSD date)
+
+## Known Limitations
+
+- **Quota pool classification for `gpt-oss-*` models remains unverified**: Models matching `claude|anthropic|3p` are routed to the 3p quota keys (`3p-5h`/`3p-weekly`), while all other models default to the Gemini quota keys (`gemini-5h`/`gemini-weekly`). It is currently unverified whether `gpt-oss-*` models are tracked under `3p-*` or `gemini-*` by `agy` internals. To verify this, capture the live stdin JSON payload passed to `statusline.sh` while a `gpt-oss` model is active and inspect the `.quota` key structure.

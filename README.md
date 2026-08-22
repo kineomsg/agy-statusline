@@ -64,6 +64,18 @@ Toggle on/off at any time with `/statusline` inside `agy`.
 - Linux (GNU date)
 - macOS (BSD date)
 
+## Changelog
+
+### 2026-08-23
+
+Six confirmed bugs from a stealth/ox-alpha (OpenRouter) self-review, fixed and redeployed (commit `37ebd0e`):
+
+- **Fixed**: `to_epoch()`'s macOS (`date -j`) fallback misinterpreted a naive UTC timestamp as local time, skewing reset-time displays by the local UTC offset. Fixed with a `TZ=UTC` prefix
+- **Fixed**: `jq_fields2`'s `h5_pct`/`d7_pct` type checks used `!= null` instead of verifying the value is numeric, so a non-numeric quota field took the model name display down with it. Changed to `(type) == "number"` guards
+- **Fixed**: unknown reset time displayed as `(soon)` instead of an explicit unknown-value indicator; changed to `?`. A follow-up fix was needed in `to_epoch()` itself, since GNU `date -d ""` doesn't error on an empty string (it silently returns today's midnight instead of failing), which prevented the intended empty-string branch from ever firing
+- **Fixed**: `model_display` could carry raw ANSI escape codes through into the final output; now piped through the existing `strip_ansi()` helper first
+- **Fixed**: `bin/install.sh` didn't back up `settings.json` before overwriting it, and its `jq ... && mv ...` pattern (not wrapped in an `if`) let a `jq` failure pass silently under bash's `set -e` AND-list exemption, reporting success even when the JSON update failed. Added a `.bak` backup and explicit `if`/`else` failure detection
+
 ## Known Limitations
 
 - **Quota pool classification for `gpt-oss-*` models remains unverified**: Models matching `claude|anthropic|3p` are routed to the 3p quota keys (`3p-5h`/`3p-weekly`), while all other models default to the Gemini quota keys (`gemini-5h`/`gemini-weekly`). It is currently unverified whether `gpt-oss-*` models are tracked under `3p-*` or `gemini-*` by `agy` internals. To verify this, capture the live stdin JSON payload passed to `statusline.sh` while a `gpt-oss` model is active and inspect the `.quota` key structure.

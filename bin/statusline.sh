@@ -37,13 +37,17 @@ build_gauge() {
 }
 
 to_epoch() {
+    [ -z "$1" ] && echo "" && return
     # GNU date (-d) parses full ISO8601 including milliseconds/Z directly, so it
-    # gets the raw $1. BSD/macOS date (-j -f) needs an exact strptime format, so
-    # it gets the trimmed $iso (ms and trailing Z stripped) as a fallback.
+    # gets the raw $1. BSD/macOS date (-j -f) needs an exact strptime format
+    # with no timezone component, so it gets the trimmed $iso (ms and trailing
+    # Z stripped) as a fallback -- but without an explicit TZ, `date -j`
+    # interprets that naive string as LOCAL time, silently shifting every UTC
+    # timestamp by the local UTC offset. Force UTC interpretation explicitly.
     local iso="${1%%.*}"  # ミリ秒以降を除去 (e.g. .123Z)
     iso="${iso%Z}"        # 末尾のZを除去
     date -d "$1" +%s 2>/dev/null || \
-    date -j -f "%Y-%m-%dT%H:%M:%S" "$iso" +%s 2>/dev/null || \
+    TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%S" "$iso" +%s 2>/dev/null || \
     echo ""
 }
 
@@ -109,7 +113,7 @@ fmt_epoch_hm() {
 # and returns 1 if the epoch is missing/invalid/already past.
 resolve_reset_diff() {
     if [ -z "$1" ]; then
-        echo "soon"; return 1
+        echo "?"; return 1
     fi
     local diff=$(( $1 - now ))
     if [ $diff -le 0 ]; then
@@ -150,9 +154,9 @@ else
 fi
 
 jq_fields2=$(echo "$input" | jq -r --arg q5h "$q5h_key" --arg qwk "$qwk_key" '
-    "h5_pct="   + (if .quota[$q5h].remaining_fraction != null then (((1 - .quota[$q5h].remaining_fraction) * 100) | floor | tostring) else "" end | @sh) + "\n" +
+    "h5_pct="   + (if (.quota[$q5h].remaining_fraction | type) == "number" then (((1 - .quota[$q5h].remaining_fraction) * 100) | floor | tostring) else "" end | @sh) + "\n" +
     "h5_reset=" + (.quota[$q5h].reset_time // "" | @sh) + "\n" +
-    "d7_pct="   + (if .quota[$qwk].remaining_fraction != null then (((1 - .quota[$qwk].remaining_fraction) * 100) | floor | tostring) else "" end | @sh) + "\n" +
+    "d7_pct="   + (if (.quota[$qwk].remaining_fraction | type) == "number" then (((1 - .quota[$qwk].remaining_fraction) * 100) | floor | tostring) else "" end | @sh) + "\n" +
     "d7_reset=" + (.quota[$qwk].reset_time // "" | @sh)
 ' 2>/dev/null)
 if [ $? -ne 0 ]; then
@@ -164,7 +168,7 @@ eval "$jq_fields2"
 items=()
 
 if [ -n "$model_display" ]; then
-    model_short=$(echo "$model_display" | tr -d ' ')
+    model_short=$(strip_ansi "$model_display" | tr -d ' ')
     if echo "$model_id" | grep -qiE 'opus|sonnet|gemini.*pro'; then
         items+=("${C_RED}!!${model_short}${C_RESET}")
     else

@@ -48,13 +48,18 @@ CURRENT_CMD=$(jq -r '.statusLine.command // ""' "$SETTINGS_FILE" 2>/dev/null)
 if [ "$CURRENT_CMD" = "$STATUS_CMD" ]; then
     ok "settings.json already configured"
 else
+    cp "$SETTINGS_FILE" "${SETTINGS_FILE}.bak"
     tmp=""
     trap 'rm -f "$tmp"' EXIT
     tmp=$(mktemp -t 'agy-statusline.XXXXXX' 2>/dev/null || mktemp)
-    jq --arg cmd "$STATUS_CMD" \
+    if jq --arg cmd "$STATUS_CMD" \
         '.statusLine = {"type": "command", "command": $cmd, "enabled": true}' \
-        "$SETTINGS_FILE" > "$tmp" && mv "$tmp" "$SETTINGS_FILE"
-    ok "Updated ${C_DIM}settings.json${C_RESET} with statusLine config"
+        "$SETTINGS_FILE" > "$tmp" && [ -s "$tmp" ]; then
+        mv "$tmp" "$SETTINGS_FILE"
+        ok "Updated ${C_DIM}settings.json${C_RESET} with statusLine config (backup: ${C_DIM}settings.json.bak${C_RESET})"
+    else
+        fail "Could not update settings.json (invalid JSON?). Backup kept at settings.json.bak -- please add the statusLine config manually: $STATUS_CMD"
+    fi
 fi
 
 echo
